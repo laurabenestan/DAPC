@@ -17,7 +17,7 @@ This statistical approach was developped by Jombart and colleagues through the `
 
 Transform the vcf to a genepop file using `radiator` package.
 ```{r}
-snps_genlight <- genomic_converter(data = "4991_515ind.vcf", strata = "../../00-Data/population_map_sharks.txt",
+snps_genlight <- genomic_converter(data = "4991_515ind.vcf", strata = "population_map_sharks.txt",
   output = c("genepop"))
 ```
 
@@ -30,10 +30,10 @@ genlight_sharks <- vcfR2genlight(vcf_sharks)
 
 Or you can even use the `adegenet` package if you already have a genepop file.
 ```{r}
-genepop_sharks <- read.genepop("../../00-Data/4991_515ind.gen", ncode=3L)
+genepop_sharks <- read.genepop("4991_515ind.gen", ncode=3L)
 ```
 
-Download geographic information.
+Download population map file containing the following information: ID, LATITUDE, LONGITUDE and SAMPLING LOCATION.
 ```{r}
 geo <- read.table("population-map-sharks.txt", header=TRUE, sep="\t")
 ```
@@ -64,6 +64,8 @@ colnames(data_kmeans) = c("SITE","K")
 write.table(data_kmeans, "Individuals_clusters_BIC_515ind.txt", quote=F)
 ```
 
+[]!(BIC_515ind.png)
+
 Match geographic coordinates of each individual to its inferred genetic group in order to see if there is any clustering relatively to the sampling location.
 ```{r}
 kmean_geo <- merge(data_kmeans, geo, by="IND")
@@ -74,7 +76,7 @@ Save the results
 write.table(individuals, "Individuals_clusters_BIC_serranus.txt", quote=F)
 ```
 
-## 3 - Represent the genetic clusters observed in a map
+## 3 - Represent the genetic clusters observed on a sampling map
 
 Download the background data required for creating a map.
 ```{r}
@@ -105,21 +107,14 @@ graph2
 
 Save the graph.
 ```{r}
-ggsave("Kmeans_sharks.pdf")
+ggsave("Kmean_map_sharks.pdf")
 ```
 
-## 4 - Run a DPCA with MPA information (prior)
+## 4 - Run a DPCA without any prior (based on the K clustering found by the BIC analysis)
 
-Find optimal alpha value, which represents the trade-off between power of discrimination and over-fitting. When overfitting, you can observe some clustering even when it is random groups.
+Run the DAPC with prior using the number of PCs equal to N/3.
 ```{r}
-dapc_a_score <- dapc(data,n.da=156,n.pca=156)
-temp_score <- optim.a.score(dapc_a_score)
-names(temp_score)
-```
-
-Run the DAPC with prior using the number of PCs retained following the alpha score
-```{r}
-dapc2 <-dapc(data, grp$grp)
+dapc_noprior <-dapc(data, grp$grp)
 ```
 
 Visualize quickly the DPCA results.
@@ -127,15 +122,15 @@ Visualize quickly the DPCA results.
 scatter(dapc2, bg="white", scree.da=FALSE, legend=TRUE, solid=.4)
 ```
 
-Save the results of the DPCA without a prior in a file
+Explore the contribution of each SNP to each axis sans save this information.
 ```{r}
 names(dapc2)
 head(dapc2$var.contr)
 load_dpca2 <- as.data.frame(dapc2$var.contr)
-write.table(load_dpca2, "LOADING_MPAprior_diplodus.txt", sep="\t", row.names=FALSE, quote=FALSE)
+write.table(load_dpca2, "LOADING_prior.txt", sep="\t", row.names=FALSE, quote=FALSE)
 ```
 
-Analyse how much percent of genetic variance is explained by each axe
+Observe how much percent of genetic variance is explained by each axis and save this information.
 ```{r}
 pdf("Percent_dapc_all_loci.pdf")
 percent= dapc2$eig/sum(dapc2$eig)*100
@@ -146,18 +141,18 @@ percent
 
 ## 4 - Visualize the DPCA results with the ggplot package
 
-Write the results of the DPCA.
+Save the results of the DPCA in a dataframe.
 ```{r}
 tab=as.data.frame(dapc2$ind.coord)
 write.table(tab, "DCPA_results_diplodus.txt", quote=F, sep="\t", row.names=TRUE)
 ```
 
-Add information to the tab results of the DPCA
+Add information to the tab results of the DPCA.
 ```{r}
 tab$IND <- row.names(tab)
 ```
 
-Add geographical information
+Add geographical information.
 ```{r}
 dpca_geo <- merge(x = tab, y=geo, by=c("IND"))
 ```
@@ -165,7 +160,7 @@ dpca_geo <- merge(x = tab, y=geo, by=c("IND"))
 Make a ggplot graph representing the DAPC for the first and second axes for the regions
 
 ```{r}
-g = ggplot(dpca_geo, aes(x=LD1, y=LD2, fill=MPA.NAME_EN))+ geom_point(size=2, pch=21)+
+g = ggplot(dpca_geo, aes(x=LD1, y=LD2, fill=K))+ geom_point(size=2, pch=21)+
   scale_fill_viridis(discrete=TRUE)+
   #guides(fill=FALSE)+
   labs(x="DPC1 (22.6%)")+
@@ -183,7 +178,21 @@ g
 
 Save the ggplot graph.
 ```{r}
-ggsave("DPCA_MPA_prior.pdf",width=13,height=9,dpi=600,units="cm",useDingbats=F)
+ggsave("DPCA_noprior.pdf",width=13,height=9,dpi=600,units="cm",useDingbats=F)
 ```
 
+## 5 - Run a DPCA with prior (based on your sampling locations
 
+Find optimal alpha value, which represents the trade-off between power of discrimination and over-fitting. When overfitting, you can observe some clustering even when it is random groups.
+
+```{r}
+dapc_a_score <- dapc(data,n.da=156,n.pca=156)
+temp_score <- optim.a.score(dapc_a_score)
+names(temp_score)
+```
+
+Run the DPCA with the number of PCs indicated by the alpha score. 
+If you retain too many PCs, you will overfit your data so this step is really crucial
+```{r}
+dapc_prior <-dapc(data, data@pop)
+```
