@@ -2,7 +2,11 @@
 
 This tutorial provides recommendations for applying the Discriminant Analysis of Principal Components (DAPC) to a wide genomic dataset such as RAD-seq or DarT. 
 
-DPCA acts like a Principal Component Analysis (PCA) and will give more importance to intergroup differences rather than the intragroup differenecs. Groups can be specify at the beginning of the analysis in a blind way (hereafter names DPCA with no prior) or based on sampling information (DPCA with prior). This analysis is particularly relevant in a case of marine species, where low genetic differentaition is often found and hamper the possibility to reveal substle but significant genetic differences. The DPCA was developped by Jombart and colleagues through the `adegenet` package. See the [excellent tutorial](http://adegenet.r-forge.r-project.org/files/tutorial-dapc.pdf) done by Thibault Jombart and Cattlin Collins
+DPCA acts like a Principal Component Analysis (PCA) and will give more importance to intergroup differences rather than the intragroup differences. Groups can be specify at the beginning of the analysis in a blind way (hereafter named DPCA with no prior) or based on sampling information (DPCA with prior). 
+
+DPCA analysis is particularly relevant in a case of marine species, where low genetic differentiation is often found and hamper the possibility to reveal substle but significant genetic differences.
+
+This statistical approach was developped by Jombart and colleagues through the `adegenet` package. See the [excellent tutorial](http://adegenet.r-forge.r-project.org/files/tutorial-dapc.pdf) done by Thibault Jombart and Cattlin Collins.
 
 ## 0 - Prepare your R environment
 
@@ -11,39 +15,48 @@ DPCA acts like a Principal Component Analysis (PCA) and will give more importanc
   
 ## 1 - Download genomic and spatial datasets
 
-Transform the vcf to a genepop file.
+Transform the vcf to a genepop file using `radiator` package.
 ```{r}
-snps_genlight <- genomic_converter(data = "../../00-Data/4991_515ind.vcf", strata = "../../00-Data/population_map_sharks.txt",
+snps_genlight <- genomic_converter(data = "4991_515ind.vcf", strata = "../../00-Data/population_map_sharks.txt",
   output = c("genepop"))
 ```
 
-Download genomic information.
+Yet some users may encounter difficulties to install `radiator` package.
+In this case, you can use the `vcfR` package instead.
 ```{r}
-genpop_shark <- read.genepop("../../00-Data/4991_515ind.gen", ncode=3L)
+vcf_sharks <- read.vcfR("4991_515ind.vcf")
+genlight_sharks <- vcfR2genlight(vcf_sharks)
 ```
 
-Download geographic information
+Or you can even use the `adegenet` package if you already have a genepop file.
 ```{r}
-geo <- read.table("../../00-Data/distances_to_mpa_no_coteblue.txt", header=TRUE, sep="\t")
-geo$IND <- gsub("_","-", geo$IND)
+genepop_sharks <- read.genepop("../../00-Data/4991_515ind.gen", ncode=3L)
+```
+
+Download geographic information.
+```{r}
+geo <- read.table("population-map-sharks.txt", header=TRUE, sep="\t")
 ```
 
 ## 2 - Find the number of clusters in your dataset
 
-Find clusters into your data.
+Find clusters into your data usin a genlight or genepop object.
 ```{r}
-grp <- find.clusters(genpop_shark, max.n.clust=10)
+grp <- find.clusters(genepop_shark, max.n.clust=10)
 ```
 
-Choose the number of PCs to retain in relation to the number of individuals in the dataset. Choose the best number of K (the smallest BIC value) to keep according to the minimum Cross-validation errror rate. 
-Here, a K of 2 seems to be the best K to keep.
+Choose the number of PCs to retain in relation to the number of individuals in the dataset. This number do not exceed N/3. Keep in mind that more PCs you select, more able you will be to detect clustering in the data.
+
+Choose the best number of K (the smallest BIC value) to keep according to the minimum Cross-validation errror rate gave by the Bayesian Information Criterion. 
+Here, a K equal 3 seems to be the best K to keep.
 
 Check the group size of each genetic cluster found.
+The step will give you an idea of the releavance of each genetic cluster found.
 ```{r}
 grp$size
 ```
 
-Save the result.
+Save and export the results in a dataframe.
 ```{r}
 data_kmeans <- data.frame(pop$STRATA,grp$grp)
 names(data_kmeans)
@@ -51,7 +64,7 @@ colnames(data_kmeans) = c("SITE","K")
 write.table(data_kmeans, "Individuals_clusters_BIC_515ind.txt", quote=F)
 ```
 
-Match geographic coordinates with K genetic group info obtained with BIC
+Match geographic coordinates of each individual to its inferred genetic group in order to see if there is any clustering relatively to the sampling location.
 ```{r}
 kmean_geo <- merge(data_kmeans, geo, by="IND")
 ```
@@ -61,14 +74,14 @@ Save the results
 write.table(individuals, "Individuals_clusters_BIC_serranus.txt", quote=F)
 ```
 
-## 3 - Represent the genetic clusters obserevd in a map
+## 3 - Represent the genetic clusters observed in a map
 
-Download the data for creating a map.
+Download the background data required for creating a map.
 ```{r}
 wH <- map_data("worldHires", xlim=c(-8,37), ylim=c(29.5,47)) # subset polygons surrounding med sea
 ```
 
-Make a map using `ggplot`package.
+Make a map using `ggplot` and `sf` package.
 ```{r}
 x_title="Longitude"
 y_title="Latitude"
@@ -92,12 +105,12 @@ graph2
 
 Save the graph.
 ```{r}
-ggsave("Kmeans_serranus.pdf")
+ggsave("Kmeans_sharks.pdf")
 ```
 
 ## 4 - Run a DPCA with MPA information (prior)
 
-Find optimal alpha value
+Find optimal alpha value, which represents the trade-off between power of discrimination and over-fitting. When overfitting, you can observe some clustering even when it is random groups.
 ```{r}
 dapc_a_score <- dapc(data,n.da=156,n.pca=156)
 temp_score <- optim.a.score(dapc_a_score)
